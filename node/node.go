@@ -5,6 +5,7 @@ import (
     "gfn/consensus"
 )
 
+// InitNode sets up the genesis block and initial validators
 func InitNode() error {
     fmt.Println("Initializing node...")
     consensus.InitGenesis()
@@ -16,8 +17,9 @@ func InitNode() error {
     return nil
 }
 
+// StartNode starts the consensus loop and keeps running
 func StartNode() error {
     fmt.Println("Starting node...")
     go consensus.RunConsensus()
-    select {} // keep running
+    select {} // block forever
 }
