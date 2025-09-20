@@ -7,3 +7,8 @@ Quickstart:
 Use HTTP JSON-RPC at /rpc with method Graphene.SendTx and Graphene.GetBalance.
 Example (curl):
 curl -s -X POST --data '{"method":"Graphene.SendTx","params":[{"from":"alice","to":"bob","amount":100}],"id":1}' http://localhost:8545/rpc
+
+Running the chain:
+go run cmd/gfn/main.go init
+go run cmd/gfn/main.go start
+This launches a simple 2-validator Graphene prototype producing blocks.
