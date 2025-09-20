@@ -1,4 +1,4 @@
-module github.com/yourorg/graphene-proto
+module github.com/rockandcode4/graphene-proto
 
 go 1.21
 
