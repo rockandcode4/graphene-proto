@@ -1,23 +1,11 @@
-version: '3.8'
+version: '3'
 services:
   node1:
-    build: .
-    command: ./bin/node --datadir ./data/node1 --rpc 8545
-    ports:
-      - "8545:8545"
-    volumes:
-      - ./data/node1:/app/data/node1
+    build: ..
+    command: go run ./cmd/gfn start --node-id 1
   node2:
-    build: .
-    command: ./bin/node --datadir ./data/node2 --rpc 8546
-    ports:
-      - "8546:8546"
-    volumes:
-      - ./data/node2:/app/data/node2
+    build: ..
+    command: go run ./cmd/gfn start --node-id 2
   node3:
-    build: .
-    command: ./bin/node --datadir ./data/node3 --rpc 8547
-    ports:
-      - "8547:8547"
-    volumes:
-      - ./data/node3:/app/data/node3
+    build: ..
+    command: go run ./cmd/gfn start --node-id 3
