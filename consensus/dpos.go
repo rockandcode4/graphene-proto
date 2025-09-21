@@ -3,6 +3,7 @@ package consensus
 import (
     "fmt"
     "time"
+    "gfn/store"
 )
 
 type Validator struct {
@@ -17,6 +18,8 @@ var Blockchain []*Block
 func InitGenesis() {
     genesis := NewBlock(0, "", "genesis", []byte("Genesis Block"))
     Blockchain = append(Blockchain, genesis)
+    store.SaveBlock(genesis)
+    store.SaveHead(genesis.Hash)
     fmt.Println("Genesis block created:", genesis.Hash)
 }
 
@@ -24,6 +27,11 @@ func ProduceBlock(validator Validator, data []byte) *Block {
     prev := Blockchain[len(Blockchain)-1]
     block := NewBlock(prev.Height+1, prev.Hash, validator.Address, data)
     Blockchain = append(Blockchain, block)
+
+    // persist
+    store.SaveBlock(block)
+    store.SaveHead(block.Hash)
+
     return block
 }
 
@@ -32,7 +40,7 @@ func RunConsensus() {
         for _, v := range Validators {
             if v.Active {
                 b := ProduceBlock(v, []byte("tx data"))
-                fmt.Println("Block produced by", v.Address, "at height", b.Height)
+                fmt.Println("Block produced by", v.Address, "at height", b.Height, "hash:", b.Hash)
                 time.Sleep(2 * time.Second)
             }
         }
