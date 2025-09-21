@@ -3,11 +3,16 @@ package node
 import (
     "fmt"
     "gfn/consensus"
+    "gfn/store"
 )
 
-// InitNode sets up the genesis block and initial validators
 func InitNode() error {
     fmt.Println("Initializing node...")
+    if err := store.OpenDB("data"); err != nil {
+        return err
+    }
+    defer store.CloseDB()
+
     consensus.InitGenesis()
     consensus.Validators = []consensus.Validator{
         {Address: "validator1", Stake: 1000, Active: true},
@@ -17,9 +22,13 @@ func InitNode() error {
     return nil
 }
 
-// StartNode starts the consensus loop and keeps running
 func StartNode() error {
     fmt.Println("Starting node...")
+    if err := store.OpenDB("data"); err != nil {
+        return err
+    }
+    defer store.CloseDB()
+
     go consensus.RunConsensus()
     select {} // block forever
 }
