@@ -1,23 +1,23 @@
 package main
 
 import (
-	"encoding/hex"
-	"fmt"
-	"log"
-
-	"github.com/ethereum/go-ethereum/crypto"
+    "crypto/ecdsa"
+    "crypto/elliptic"
+    "crypto/rand"
+    "crypto/x509"
+    "encoding/hex"
+    "fmt"
 )
 
 func main() {
-	privateKey, err := crypto.GenerateKey()
-	if err != nil {
-		log.Fatalf("keygen failed: %v", err)
-	}
-	privBytes := crypto.FromECDSA(privateKey)
-	pubBytes := crypto.FromECDSAPub(&privateKey.PublicKey)
-	address := crypto.PubkeyToAddress(privateKey.PublicKey)
+    priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Println("PRIVATE_KEY_HEX:", hex.EncodeToString(privBytes))
-	fmt.Println("PUBKEY_HEX:", hex.EncodeToString(pubBytes))
-	fmt.Println("ADDRESS:", address.Hex())
+    privBytes, _ := x509.MarshalECPrivateKey(priv)
+    pubBytes, _ := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+
+    fmt.Println("Private Key:", hex.EncodeToString(privBytes))
+    fmt.Println("Public Key:", hex.EncodeToString(pubBytes))
 }
