@@ -3,36 +3,35 @@ package main
 import (
     "fmt"
     "os"
+    "os/signal"
+    "syscall"
 
-    "github.com/urfave/cli/v2"
-    "gfn/consensus"
-    "gfn/core"
     "gfn/node"
+    "gfn/store"
 )
 
 func main() {
-    app := &cli.App{
-        Name:  "gfn",
-        Usage: "Graphene (GFN) blockchain node",
-        Commands: []*cli.Command{
-            {
-                Name:  "init",
-                Usage: "Initialize a new node with genesis",
-                Action: func(c *cli.Context) error {
-                    return node.InitNode()
-                },
-            },
-            {
-                Name:  "start",
-                Usage: "Start Graphene node",
-                Action: func(c *cli.Context) error {
-                    return node.StartNode()
-                },
-            },
-        },
+    fmt.Println("Starting GFN Blockchain...")
+
+    // Init node
+    if err := node.InitNode(); err != nil {
+        fmt.Println("Init error:", err)
+        return
     }
 
-    if err := app.Run(os.Args); err != nil {
-        fmt.Println("Error:", err)
+    // Handle shutdown signals (CTRL+C, kill, etc.)
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+    go func() {
+        <-quit
+        fmt.Println("\nShutting down node...")
+        store.CloseDB()
+        os.Exit(0)
+    }()
+
+    // Start node consensus
+    if err := node.StartNode(); err != nil {
+        fmt.Println("Node error:", err)
     }
 }
