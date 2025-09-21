@@ -2,7 +2,6 @@ package consensus
 
 import (
     "fmt"
-    "gfn/core"
     "time"
 )
 
@@ -13,18 +12,17 @@ type Validator struct {
 }
 
 var Validators []Validator
-var Blockchain []*core.Block
+var Blockchain []*Block
 
 func InitGenesis() {
-    // First block (genesis)
-    genesis := core.NewBlock(0, "", "genesis", []byte("Genesis Block"))
+    genesis := NewBlock(0, "", "genesis", []byte("Genesis Block"))
     Blockchain = append(Blockchain, genesis)
     fmt.Println("Genesis block created:", genesis.Hash)
 }
 
-func ProduceBlock(validator Validator, data []byte) *core.Block {
+func ProduceBlock(validator Validator, data []byte) *Block {
     prev := Blockchain[len(Blockchain)-1]
-    block := core.NewBlock(prev.Height+1, prev.Hash, validator.Address, data)
+    block := NewBlock(prev.Height+1, prev.Hash, validator.Address, data)
     Blockchain = append(Blockchain, block)
     return block
 }
@@ -35,7 +33,7 @@ func RunConsensus() {
             if v.Active {
                 b := ProduceBlock(v, []byte("tx data"))
                 fmt.Println("Block produced by", v.Address, "at height", b.Height)
-                time.Sleep(2 * time.Second) // block time
+                time.Sleep(2 * time.Second)
             }
         }
     }
