@@ -1,132 +1,200 @@
 package consensus
 
 import (
+    "crypto/sha256"
+    "encoding/hex"
     "fmt"
+    "math/rand"
+    "sync"
     "time"
 
-    "gfn/store"
     "gfn/state"
+    "gfn/store"
 )
 
-// ----------------- Core Types -----------------
+// ------------------- Types -------------------
 
+// Validator represents a staking node
 type Validator struct {
     Address string
-    Stake   int64
+    Stake   uint64
     Active  bool
 }
 
+// Delegation from a user to a validator
+type Delegation struct {
+    Delegator string
+    Validator string
+    Amount    uint64
+}
+
+// Block structure
 type Block struct {
-    Height    int
-    PrevHash  string
-    Producer  string
-    Data      []byte
-    Hash      string
+    Index     int
     Timestamp int64
+    PrevHash  string
+    Hash      string
+    Validator string
+    Txns      []Transaction
 }
 
+// Transaction for transfer, stake, or delegation
 type Transaction struct {
-    From   string
-    To     string
-    Amount float64
+    From      string
+    To        string
+    Amount    uint64
+    Type      string // "transfer", "stake", "delegate"
+    Validator string // used for "delegate"
 }
 
-// ----------------- Globals -----------------
+var (
+    Blockchain []Block
+    Validators []Validator
+    Delegations []Delegation
+    mu          sync.Mutex
+)
 
-var Validators []Validator
-var Blockchain []*Block
+// ------------------- Core -------------------
 
-// ----------------- Block Functions -----------------
-
-// NewBlock creates a new block
-func NewBlock(height int, prevHash string, producer string, data []byte) *Block {
-    block := &Block{
-        Height:    height,
-        PrevHash:  prevHash,
-        Producer:  producer,
-        Data:      data,
-        Timestamp: time.Now().Unix(),
-    }
-    block.Hash = fmt.Sprintf("%x", time.Now().UnixNano()) // simple unique hash
-    return block
-}
-
-// ----------------- Genesis + Load -----------------
-
-// InitGenesis creates the genesis block
+// Initialize genesis block
 func InitGenesis() {
-    genesis := NewBlock(0, "", "genesis", []byte("Genesis Block"))
+    genesis := Block{
+        Index:     0,
+        Timestamp: time.Now().Unix(),
+        PrevHash:  "",
+        Validator: "genesis",
+        Txns:      []Transaction{},
+    }
+    genesis.Hash = calculateHash(genesis)
     Blockchain = append(Blockchain, genesis)
     store.SaveBlock(genesis)
-    store.SaveHead(genesis.Hash)
-    fmt.Println("Genesis block created:", genesis.Hash)
+    fmt.Println("Genesis block created.")
 }
 
-// LoadBlockchain reloads the chain from LevelDB
+// Load blockchain from store
 func LoadBlockchain() error {
-    headHash, err := store.LoadHead()
+    blocks, err := store.LoadBlocks()
     if err != nil {
-        return fmt.Errorf("no chain found, need to create genesis: %v", err)
+        return err
     }
-
-    // Walk backwards from head block until genesis
-    hash := headHash
-    var chain []*Block
-    for {
-        block, err := store.LoadBlock(hash)
-        if err != nil {
-            return fmt.Errorf("failed to load block: %v", err)
-        }
-        chain = append([]*Block{block}, chain...) // prepend
-
-        if block.Height == 0 {
-            break
-        }
-        hash = block.PrevHash
-    }
-
-    Blockchain = chain
-    fmt.Println("Blockchain loaded, height:", len(Blockchain)-1)
+    Blockchain = blocks
     return nil
 }
 
-// ----------------- Transactions -----------------
-
-func ApplyTransaction(tx Transaction) {
-    fmt.Println("Applying transaction:", tx.From, "→", tx.To, tx.Amount)
-    if err := state.Transfer(tx.From, tx.To, tx.Amount); err != nil {
-        fmt.Println("Transaction failed:", err)
+// RunConsensus — simple DPoS loop
+func RunConsensus() {
+    for {
+        time.Sleep(5 * time.Second)
+        mu.Lock()
+        proposer := electValidator()
+        if proposer == "" {
+            mu.Unlock()
+            continue
+        }
+        block := generateBlock(proposer)
+        Blockchain = append(Blockchain, block)
+        store.SaveBlock(block)
+        fmt.Printf("⛓️ Block %d produced by %s (stake=%d)\n", block.Index, proposer, getValidatorStake(proposer))
+        mu.Unlock()
     }
 }
 
-// ----------------- Block Production -----------------
+// ------------------- Staking / Delegation -------------------
 
-func ProduceBlock(validator Validator, data []byte) *Block {
-    prev := Blockchain[len(Blockchain)-1]
-
-    // Example: validator pays user1 in each block
-    tx := Transaction{From: validator.Address, To: "user1", Amount: 1.5}
-    ApplyTransaction(tx)
-
-    block := NewBlock(prev.Height+1, prev.Hash, validator.Address, data)
-    Blockchain = append(Blockchain, block)
-
-    store.SaveBlock(block)
-    store.SaveHead(block.Hash)
-
-    return block
+// Handle staking transaction
+func Stake(address string, amount uint64) error {
+    if state.Balances[address] < amount {
+        return fmt.Errorf("insufficient balance")
+    }
+    state.Debit(address, amount)
+    found := false
+    for i := range Validators {
+        if Validators[i].Address == address {
+            Validators[i].Stake += amount
+            found = true
+            break
+        }
+    }
+    if !found {
+        Validators = append(Validators, Validator{Address: address, Stake: amount, Active: true})
+    }
+    fmt.Printf("✅ %s staked %d GFN\n", address, amount)
+    return nil
 }
 
-// ----------------- Consensus Loop -----------------
+// Handle delegation transaction
+func Delegate(delegator, validator string, amount uint64) error {
+    if state.Balances[delegator] < amount {
+        return fmt.Errorf("insufficient balance")
+    }
+    state.Debit(delegator, amount)
+    Delegations = append(Delegations, Delegation{Delegator: delegator, Validator: validator, Amount: amount})
 
-func RunConsensus() {
-    for {
-        for _, v := range Validators {
-            if v.Active {
-                b := ProduceBlock(v, []byte("tx data"))
-                fmt.Println("Block produced by", v.Address, "at height", b.Height, "hash:", b.Hash)
-                time.Sleep(2 * time.Second)
+    // Increase validator's effective stake
+    for i := range Validators {
+        if Validators[i].Address == validator {
+            Validators[i].Stake += amount
+            fmt.Printf("🤝 %s delegated %d GFN to %s\n", delegator, amount, validator)
+            return nil
+        }
+    }
+
+    // If validator not found, create it
+    Validators = append(Validators, Validator{Address: validator, Stake: amount, Active: true})
+    fmt.Printf("🤝 %s delegated %d GFN to new validator %s\n", delegator, amount, validator)
+    return nil
+}
+
+// Elect validator weighted by stake
+func electValidator() string {
+    var totalStake uint64
+    for _, v := range Validators {
+        if v.Active {
+            totalStake += v.Stake
+        }
+    }
+    if totalStake == 0 {
+        return ""
+    }
+    r := rand.Uint64() % totalStake
+    var cumulative uint64
+    for _, v := range Validators {
+        if v.Active {
+            cumulative += v.Stake
+            if r < cumulative {
+                return v.Address
             }
         }
     }
+    return ""
+}
+
+// ------------------- Block Generation -------------------
+
+func generateBlock(validator string) Block {
+    prev := Blockchain[len(Blockchain)-1]
+    block := Block{
+        Index:     prev.Index + 1,
+        Timestamp: time.Now().Unix(),
+        PrevHash:  prev.Hash,
+        Validator: validator,
+        Txns:      []Transaction{},
+    }
+    block.Hash = calculateHash(block)
+    return block
+}
+
+func calculateHash(b Block) string {
+    record := fmt.Sprintf("%d%d%s%s", b.Index, b.Timestamp, b.PrevHash, b.Validator)
+    hash := sha256.Sum256([]byte(record))
+    return hex.EncodeToString(hash[:])
+}
+
+func getValidatorStake(addr string) uint64 {
+    for _, v := range Validators {
+        if v.Address == addr {
+            return v.Stake
+        }
+    }
+    return 0
 }
