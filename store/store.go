@@ -62,3 +62,7 @@ func LoadHead() (string, error) {
     }
     return string(data), nil
 }
+func GetDB() *leveldb.DB {
+    return db
+}
+
