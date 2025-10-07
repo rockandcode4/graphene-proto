@@ -3,8 +3,12 @@ package consensus
 import (
     "fmt"
     "time"
+
     "gfn/store"
+    "gfn/state"
 )
+
+// ----------------- Core Types -----------------
 
 type Validator struct {
     Address string
@@ -12,8 +16,42 @@ type Validator struct {
     Active  bool
 }
 
+type Block struct {
+    Height    int
+    PrevHash  string
+    Producer  string
+    Data      []byte
+    Hash      string
+    Timestamp int64
+}
+
+type Transaction struct {
+    From   string
+    To     string
+    Amount float64
+}
+
+// ----------------- Globals -----------------
+
 var Validators []Validator
 var Blockchain []*Block
+
+// ----------------- Block Functions -----------------
+
+// NewBlock creates a new block
+func NewBlock(height int, prevHash string, producer string, data []byte) *Block {
+    block := &Block{
+        Height:    height,
+        PrevHash:  prevHash,
+        Producer:  producer,
+        Data:      data,
+        Timestamp: time.Now().Unix(),
+    }
+    block.Hash = fmt.Sprintf("%x", time.Now().UnixNano()) // simple unique hash
+    return block
+}
+
+// ----------------- Genesis + Load -----------------
 
 // InitGenesis creates the genesis block
 func InitGenesis() {
@@ -52,20 +90,35 @@ func LoadBlockchain() error {
     return nil
 }
 
-// ProduceBlock makes a new block from a validator
+// ----------------- Transactions -----------------
+
+func ApplyTransaction(tx Transaction) {
+    fmt.Println("Applying transaction:", tx.From, "→", tx.To, tx.Amount)
+    if err := state.Transfer(tx.From, tx.To, tx.Amount); err != nil {
+        fmt.Println("Transaction failed:", err)
+    }
+}
+
+// ----------------- Block Production -----------------
+
 func ProduceBlock(validator Validator, data []byte) *Block {
     prev := Blockchain[len(Blockchain)-1]
+
+    // Example: validator pays user1 in each block
+    tx := Transaction{From: validator.Address, To: "user1", Amount: 1.5}
+    ApplyTransaction(tx)
+
     block := NewBlock(prev.Height+1, prev.Hash, validator.Address, data)
     Blockchain = append(Blockchain, block)
 
-    // persist
     store.SaveBlock(block)
     store.SaveHead(block.Hash)
 
     return block
 }
 
-// RunConsensus loops through validators to produce blocks
+// ----------------- Consensus Loop -----------------
+
 func RunConsensus() {
     for {
         for _, v := range Validators {
